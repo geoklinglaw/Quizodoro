@@ -1,5 +1,6 @@
 package com.example.quizmodoro
 
+import android.app.Activity
 import android.app.Dialog
 import android.os.Bundle
 import android.os.CountDownTimer
@@ -20,18 +21,36 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.quizmodoro.databinding.ActivityMainBinding
 import com.example.quizmodoro.databinding.ProcessTimerBinding
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+
 class MainActivity : AppCompatActivity() {
     private lateinit var mainBinding: ActivityMainBinding
     private lateinit var timerBinding: ProcessTimerBinding
     private var countDownTimer: CountDownTimer? = null
     private var initialTimeInMillis: Long = 0
     private var remainingTimeInMillis: Long = 0
+    companion object {
+        private lateinit var adminEnableResultLauncher: ActivityResultLauncher<Intent>
 
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val deviceManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val lockDeviceFunction = ComponentName(this, AdminReceiver::class.java)
+        if (!deviceManager.isAdminActive(lockDeviceFunction)) {
+            initialiseAdminPrivileges()
+        }
+
         emptyTimer()
     }
+
 
     private fun emptyTimer() {
         mainBinding = ActivityMainBinding.inflate(layoutInflater)
@@ -45,6 +64,8 @@ class MainActivity : AppCompatActivity() {
                 initialTimeInMillis = convertedTime * 60000
                 remainingTimeInMillis = initialTimeInMillis
 
+
+
                 timerBinding = ProcessTimerBinding.inflate(layoutInflater)
                 setContentView(timerBinding.root)
                 startCountDownTimer(initialTimeInMillis)
@@ -55,6 +76,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun initialiseAdminPrivileges() {
+        val lockDeviceFunction = ComponentName(this, AdminReceiver::class.java)
+        adminEnableResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                Toast.makeText(this, "Admin privileges granted", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Admin privileges not granted", Toast.LENGTH_SHORT).show()
+            }
+        }
+        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+            val text: String = "This app requires permission to lock your phone during the indicated pomodoro session."
+            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, lockDeviceFunction)
+            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, text)
+        }
+        adminEnableResultLauncher.launch(intent)
+    }
+
+
 
 
     private fun startCountDownTimer(remainingTime: Long) {
@@ -75,6 +115,8 @@ class MainActivity : AppCompatActivity() {
                 remainingTimeInMillis = millisUntilFinished
                 updateTimerUI(millisUntilFinished)
                 trackProgressBar()
+                val deviceManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                deviceManager.lockNow()
             }
             override fun onFinish() {
                 Toast.makeText(this@MainActivity, "Pomodoro session ended", Toast.LENGTH_SHORT).show()
